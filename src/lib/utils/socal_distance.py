@@ -1,12 +1,27 @@
 import copy
 import cv2, numpy as np
+import torch
 from itertools import combinations
-from .deepsocial import birds_eye, Euclidean_distance, Euclidean_distance_seprate, Apply_trackmap, ColorGenerator, center_of_2box
-from .utils import get_four_points
-from .detector.Tracker import Tracker
-from .detector.config import detector_config
-from models.mobilenetv3 import mobilenetv3
+from .deepsocial import birds_eye, birds_eye2, Euclidean_distance, Euclidean_distance_seprate, Apply_trackmap, ColorGenerator, center_of_2box
+from .utils import get_four_points, get_two_points
+from lib.face_detector.Tracker import Tracker
+from lib.face_detector.config import detector_config
+from lib.model.mobilenetv3 import mobilenetv3
 from PIL import Image
+from torchvision import transforms
+from shapely import geometry
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+transform = transforms.Compose([
+    transforms.Resize(96),
+    transforms.ToTensor(),
+    transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+])
+def projection_4_i2b(M, p):
+  px = (M[0][0] * p[0] + M[0][1] * p[1] + M[0][2]) / (M[2][0] * p[0] + M[2][1] * p[1] + M[2][2])
+  py = (M[1][0] * p[0] + M[1][1] * p[1] + M[1][2]) / (M[2][0] * p[0] + M[2][1] * p[1] + M[2][2])
+
+  return ( int(px), int(py))
 class Socal_Distance(object):
   def __init__(self):
     self._centroid_dict = dict()
@@ -31,17 +46,12 @@ class Socal_Distance(object):
     # ViolationMap        = 0             
     # RiskMap             = 0
     ######################## Units are Pixel
-    self.ViolationDistForIndivisuals = 28
-    self.ViolationDistForCouples     = 31
-    ####
-    self.CircleradiusForIndivsual    = 14
-    self.CircleradiusForCouples      = 17
-    ######################## 
-    self.MembershipDistForCouples    = (16 , 10) # (Forward, Behind) per Pixel
-    self.MembershipTimeForCouples    = 35        # Time for considering as a couple (per Frame)
+    
     self.colorPool = ColorGenerator(size = 3000)
     self._is_init = False
     self.mask_track = {}
+    self._init_face_detect()
+    self._init_facemask()
   def is_init(self):
     return self._is_init
   
@@ -63,12 +73,50 @@ class Socal_Distance(object):
     results = self.detector.detec_and_track(image, with_landmark)
     return results
   
-  def inference_facemask(image, b):
+
+  def init_transform_matrix(self, frame):
+    height, width, _ = frame.shape
+    pts_src = get_four_points(frame) #polygon detect and view 
+    pts_dis = get_two_points(frame) #get distance 2M
+    self.calibration = pts_src
+    self.poly_bounds = [pts_src[0], pts_src[1], pts_src[3], pts_src[2]]
+    self.polygon = geometry.Polygon(self.poly_bounds)
+    # with open("../conf/config_birdview.yml", "r") as ymlfile:
+    #   cfg = yaml.load(ymlfile)
+    #   for section in cfg:
+    #     width = int(cfg["image_parameters"]["width_og"])
+    #     height = int(cfg["image_parameters"]["height_og"])
+    #     img_path = cfg["image_parameters"]["img_path"]
+    #     # size_frame = cfg["image_parameters"]["size_frame"]
+    b_height = height
+    b_width = int(0.65*height)
+    self.b_height = b_height
+
+    self.b_width = b_width
+    self.e = birds_eye2(self.calibration, b_width, b_height, frame)
+    # self.calibration      = [[180,162],[618,0],[552,540],[682,464]]
+    self.d_thresh = self.e.distance_estimate(np.array([pts_dis]))
+    scale = 1
+    self.ViolationDistForIndivisuals = self.d_thresh
+    self.ViolationDistForCouples     = int(1.15*self.d_thresh)
+    ####
+    self.CircleradiusForIndivsual    = int(0.5*self.d_thresh)
+    self.CircleradiusForCouples      = int(0.615* self.d_thresh)
+    ######################## 
+    self.MembershipDistForCouples    = (int(0.6*self.d_thresh) , int(0.4*self.d_thresh)) # (Forward, Behind) per Pixel
+    self.MembershipTimeForCouples    = 35        # Time for considering as a couple (per Frame)
+    self._trackMap = np.zeros((b_height, b_width, 3), dtype=np.uint8)
+    self._crowdMap = np.zeros((b_height, b_width), dtype=np.int) 
+    
+    # self.e = birds_eye(frame, self.calibration)
+    self._is_init = True
+    
+  def inference_facemask(self, image, b):
     #img = Image.open(image_path).convert('RGB')
+    im_height, im_width = image.shape[:2]
     x1, y1, x2, y2 = int(b[0]), int(b[1]), int(b[2]), int(b[3])
     w = x2 - x1 + 1
     h = y2 - y1 + 1
-
     size = int(max([w, h])* 1.0)
     cx = x1 + w//2
     cy = y1 + h//2
@@ -76,12 +124,10 @@ class Socal_Distance(object):
     x2 = x1 + size
     y1 = cy - size//2
     y2 = y1 + size
-
     dx = max(0, -x1)
     dy = max(0, -y1)
     x1 = max(0, x1)
     y1 = max(0, y1)
-
     edx = max(0, x2 - im_width)
     edy = max(0, y2 - im_height)
     x2 = min(im_width, x2)
@@ -106,31 +152,6 @@ class Socal_Distance(object):
     nomask_porb = softmax_output[0][0]
     return mask_prob, nomask_porb
 
-  def init_transform_matrix(self, frame):
-    pts_src = get_four_points(frame)
-    pts_dst = get_four_points(frame)
-    height, width, _ = frame.shape
-    self.calibration      = [[180,162],[618,0],[552,540],[682,464]]
-    self._trackMap = np.zeros((height, width, 3), dtype=np.uint8)
-    self._crowdMap = np.zeros((height, width), dtype=np.int) 
-    self.e = birds_eye(frame, self.calibration)
-    self._is_init = True
-  def find_zone(self, centroid_dict, criteria):
-    redZone = []
-    greenZone = []
-    for (id1, p1), (id2, p2) in combinations(centroid_dict.items(), 2):
-        distance = Euclidean_distance(p1[0:2], p2[0:2])
-        if distance < criteria:
-            if id1 not in redZone:
-                redZone.append(int(id1))
-            if id2 not in redZone:
-                redZone.append(int(id2))
-
-    for idx, box in centroid_dict.items():
-        if idx not in redZone:
-            greenZone.append(idx)
-
-    return (redZone, greenZone)
   def find_relation(self, centroid_dict, criteria, redZone):
     pairs = list()
     memberships = dict()
@@ -139,11 +160,9 @@ class Socal_Distance(object):
         if p1 != p2:
           distanceX, distanceY = Euclidean_distance_seprate(centroid_dict[p1], centroid_dict[p2])
           if p1 < p2:
-            pair = (
-            p1, p2)
+            pair = (p1, p2)
           else:
-            pair = (
-            p2, p1)
+            pair = (p2, p1)
           if self._couples.get(pair):
             distanceX = distanceX * 0.6
             distanceY = distanceY * 0.6
@@ -195,7 +214,6 @@ class Socal_Distance(object):
                     pair = (
                     m2, m1)
                   couple[pair] = relation[pair]
-
     return couple
 
   def init_track(self, results):
@@ -214,7 +232,7 @@ class Socal_Distance(object):
         self.embedding_bank = np.zeros((self.nID, 128))
         self.cat_bank = np.zeros((self.nID), dtype=np.int)
 
-  def centroid(self, detections, ids, image):
+  def get_centroid(self, detections, ids, image):
     # e = birds_eye(image.copy(), calibration)
     centroid_dict = dict()
     now_present = list()
@@ -227,7 +245,11 @@ class Socal_Distance(object):
         h = ymax - ymin
         x = xmin + w/2
         y = ymax - h/2
-        # print(xmin, ymin, xmax, ymax)
+        point = geometry.Point(x, ymax)
+        
+
+        if not self.polygon.contains(point):
+          continue
         if h < self.HumanHeightLimit:
           # overley = image
           
@@ -245,6 +267,7 @@ class Socal_Distance(object):
                       int(xmin), int(ymin), int(xmax), int(ymax),
                       int(center_bird_x), int(center_bird_y))
     return centroid_dict, image
+    
   def find_couples(self, relation, criteria):
     couples = dict()
     coupleZone = list()
@@ -302,9 +325,11 @@ class Socal_Distance(object):
     BirdBorderColor = (255, 255, 255)
     BorderColor = (220, 220, 220)
     Transparency = 0.55
-    e = birds_eye(img, self.calibration)
+    e = birds_eye2(self.calibration, self.b_width, self.b_height, img)
     e.setImage(img)
-    overlay = e.img2bird()
+    im_h, im_w = img.shape[:2]
+    overlay = e.convrt2Bird(img)
+    cv2.imwrite("overlay.jpg", overlay)
     for idx, box in centroid_dict.items():
       center_bird = (
       box[0], box[1])
@@ -325,7 +350,10 @@ class Socal_Distance(object):
             cv2.circle(overlay, centerGroup_bird, Couples_radius, RedColor, -1)
 
     e.setBird(overlay)
-    e.setImage(cv2.addWeighted(e.original, Transparency,e.bird2img(), 1 - Transparency, 0))
+    temp_img = e.convrt2Image(overlay, [im_w, im_h])
+    cv2.imwrite("temp_img.jpg", temp_img)
+    # cv2.fillConvexPoly(image, np.array(self.calibration).astype(int), 0, 16)
+    e.setImage(cv2.addWeighted(e.original, Transparency, temp_img, 1 - Transparency, 0))
     overlay = e.image
     for idx, box in centroid_dict.items():
       birdseye_origin = (
@@ -376,34 +404,55 @@ class Socal_Distance(object):
     e.setImage(overlay)
     return (
     e.image, e.bird)
-  
+  def find_zone(self, centroid_dict, criteria):
+    redZone = []
+    greenZone = []
+    for (id1, p1), (id2, p2) in combinations(centroid_dict.items(), 2):
+        distance = Euclidean_distance(p1[0:2], p2[0:2])
+        if distance < criteria:
+            if id1 not in redZone:
+                redZone.append(int(id1))
+            if id2 not in redZone:
+                redZone.append(int(id2))
+
+    for idx, box in centroid_dict.items():
+        if idx not in redZone:
+            greenZone.append(idx)
+    return (redZone, greenZone)
   def step(self, image, bboxes, ids):
     results_face = []
-    for (b, id) in zip(bboxes, ids):
-      if id not in self.mask_track.keys():
-        xmin, ymin, xmax, ymax = b[0], b[1], b[2], b[3]
-        person_img = image[ymin:ymax, xmin:xmax]
-        result = self.face_detect(person_img.copy())
-        if result["num_face"]>0:
-          if abs(result["poses"][0]["yaw"])<45:
-            mask_prob, nomask_porb = self.inference_facemask(person_img, result["bboxs"][0])
-            if mask_prob >= 0.8:
-              result["face_mask"] = "mask"
-              result["mask_prob"] = mask_prob
-            else:
-              result["face_mask"] = "unmask"
-          else:
-            result["face_mask"] = "nocheck"
+    # cv2.imwrite("as.jpg", image)
+    imh, imw  = image.shape[:2]
+    # for (b, id) in zip(bboxes, ids):
+    #   if id not in self.mask_track.keys():
+    #     xmin, ymin, xmax, ymax = int(b[0]), int(b[1]), int(b[2]), int(b[3])
+    #     if not ((xmin>=0 and xmin<imw) and (ymin>=0 and ymin<imh)
+    #         and (xmax>=0 and xmax<imw) and (ymax>=0 and ymax<imw)):
+    #       continue
+    #     person_img = image[ymin:ymax, xmin:xmax]
+    #     result = self.face_detect(person_img.copy())
+    #     if result["num_face"]>0:
+    #       if abs(result["poses"][0]["yaw"])<45:
+    #         mask_prob, nomask_porb = self.inference_facemask(person_img, result["bboxs"][0])
+    #         if mask_prob >= 0.8:
+    #           result["face_mask"] = "mask"
+    #           result["mask_prob"] = mask_prob
+    #         else:
+    #           result["face_mask"] = "unmask"
+    #       else:
+    #         result["face_mask"] = "nocheck"
         
-          self.mask_track.update({id: result})
-      else:
-        result = self.mask_track[id]
-      results_face.append((id, result))
-      
-    centroid_dict, partImage = self.centroid(bboxes, ids, image)
+    #       self.mask_track.update({id: result})
+    #   else:
+    #     result = self.mask_track[id]
+    #   results_face.append((id, result))
+    # print(results_face)
+    cv2.polylines(image, [np.array(self.poly_bounds, np.int32)], True, (0, 255, 255), thickness=4)
+    
+    centroid_dict, partImage = self.get_centroid(bboxes, ids, image)
     self._centroid_dict.update(centroid_dict)
     redZone, greenZone = self.find_zone(centroid_dict, criteria=self.ViolationDistForIndivisuals)
-    self.e.setImage(image)
+    # self.e.setImage(image)
     if self.CouplesDetection:
         relation = self.find_relation(centroid_dict, self.MembershipDistForCouples, redZone)
         couples, coupleZone = self.find_couples(relation, self.MembershipTimeForCouples)
@@ -422,8 +471,13 @@ class Socal_Distance(object):
     if self.DTC:
         DTC_image = image.copy()
         self._trackMap = Apply_trackmap(centroid_dict, self._trackMap, self.colorPool, 3)
-        DTCShow = cv2.add(self.e.convrt2Image(self._trackMap), image) 
         
+        temp_img = self.e.convrt2Image(self._trackMap, [imw, imh])
+        cv2.imwrite("temp_img1.jpg", image)
+        # Black out polygonal area in destination image.
+        image_cp = cv2.fillConvexPoly(image.copy(), np.array(self.poly_bounds).astype(int), 0, 16)
+        DTCShow = cv2.add(temp_img, image_cp) 
+        cv2.imwrite("temp_img2.jpg", image)
         for id, box in centroid_dict.items():
             center_bird = box[0], box[1]
             if not id in coupleZone:
@@ -447,6 +501,7 @@ class Socal_Distance(object):
             cv2.putText(DTCShow, str(couplesID), (textLoc), cv2.FONT_HERSHEY_SIMPLEX, .4, (0,0,0),1, cv2.LINE_AA)
        
     if self.SocialDistance:
+        cv2.imwrite("im.jpg", image)
         SDimage, birdSDimage = self.apply_ellipticbound(image.copy(), centroid_dict, redZone, greenZone, yellowZone, final_redZone, coupleZone, couples, self.CircleradiusForIndivsual, self.CircleradiusForCouples)
     return SDimage, birdSDimage, DTCShow
 

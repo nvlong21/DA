@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from thop import profile
+
 import numpy as np
 
 __all__ = ['MobileNetV3', 'mobilenetv3']
@@ -228,6 +228,7 @@ def mobilenetv3():
 
 """
 if __name__ == '__main__':
+    from thop import profile
     net = mobilenetv3()
     print('mobilenetv3:\n', net)
     print('Total params: %.2fM' % (sum(p.numel() for p in net.parameters())/1000000.0))

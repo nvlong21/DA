@@ -191,7 +191,7 @@ class Tracker(object):
     if len(b) > 0:
       alive = np.array(self.alive, dtype=np.int) - 1
       cosim = cosine(a,b)
-      cosim=np.reshape(cosim, newshape=(-1))
+      cosim = np.reshape(cosim, newshape=(-1))
       cosim[alive] = -2
       cosim[nID-1] = -2
       cosim[np.where(self.cat_bank[:nID] != cls)[0]] = -2

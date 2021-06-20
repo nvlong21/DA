@@ -76,9 +76,72 @@ def midPointCircleDraw(x_centre, y_centre, r):
 
     return points
 
+class birds_eye2:
+    def __init__(self, cordinates, w, h, image):
+        self.original = image.copy()
+        self.ori_h,  self.ori_w = self.original.shape[:2]
+        self.h, self.w = h, w #image.shape[0:2]
+        pst1 = np.float32(cordinates)
+        pst2 = np.float32([[0, 0], [self.w, 0], [0, self.h], [self.w, self.h]])
+        self.transferI2B = cv2.getPerspectiveTransform(pst1, pst2)
+        self.transferB2I = cv2.getPerspectiveTransform(pst2, pst1)
+        self.image = self.convrt2Bird(image)
+        self.img2bird()
+        
+        cv2.imwrite("bird.jpg",self.bird)
+        
+    def distance_estimate(self, pts_dis):
+        warped_pt = cv2.perspectiveTransform(pts_dis, self.transferI2B)[0]
+        self.d_thresh = np.sqrt(
+            (warped_pt[0][0] - warped_pt[1][0]) ** 2
+            + (warped_pt[0][1] - warped_pt[1][1]) ** 2)
+        return self.d_thresh
+
+    def img2bird(self):
+        self.bird = cv2.warpPerspective(self.original, self.transferI2B, (self.w, self.h))
+        return self.bird
+
+    def bird2img(self):
+        self.image = cv2.warpPerspective(self.bird, self.transferB2I, (self.w, self.h))
+        return self.image
+
+    def setImage(self, img):
+        self.image = img
+
+    def setBird(self, bird):
+        self.bird = bird
+
+    def convrt2Bird(self, img):
+        return cv2.warpPerspective(img, self.transferI2B, (self.w, self.h))
+
+    def convrt2Image(self, bird, size = None):
+        if size is None:
+            w, h = self.w, self.h
+        else:
+            w, h = size[0], size[1]
+        return cv2.warpPerspective(bird, self.transferB2I, (w, h))
+
+    def projection_on_bird(self, p):
+        M = self.transferI2B
+        px = (M[0][0] * p[0] + M[0][1] * p[1] + M[0][2]) / (M[2][0] * p[0] + M[2][1] * p[1] + M[2][2])
+        py = (M[1][0] * p[0] + M[1][1] * p[1] + M[1][2]) / (M[2][0] * p[0] + M[2][1] * p[1] + M[2][2])
+        return (int(px), int(py))
+
+    def projection_on_image(self, p):
+        M = self.transferB2I
+        px = (M[0][0] * p[0] + M[0][1] * p[1] + M[0][2]) / (M[2][0] * p[0] + M[2][1] * p[1] + M[2][2])
+        py = (M[1][0] * p[0] + M[1][1] * p[1] + M[1][2]) / (M[2][0] * p[0] + M[2][1] * p[1] + M[2][2])
+        return (
+         int(px), int(py))
+
+    def points_projection_on_image(self, center, radius):
+        x, y = center
+        points = midPointCircleDraw(x, y, radius)
+        original = np.array([points], dtype=(np.float32))
+        cvd = cv2.perspectiveTransform(original, self.transferB2I)
+        return cvd[0]
 
 class birds_eye:
-
     def __init__(self, image, cordinates):
         self.original = image.copy()
         self.image = image
@@ -88,7 +151,7 @@ class birds_eye:
         self.transferI2B = cv2.getPerspectiveTransform(pst1, pst2)
         self.transferB2I = cv2.getPerspectiveTransform(pst2, pst1)
         self.img2bird()
-
+        cv2.imwrite("bird.jpg",self.bird)
     def img2bird(self):
         self.bird = cv2.warpPerspective(self.image, self.transferI2B, (self.w, self.h))
         return self.bird

@@ -3,9 +3,7 @@ pwd = os.path.dirname(os.path.realpath(__file__))
 import numpy as np
 import cv2
 import math
-# from src.detector.gaze_tracking import Eye
-
-from src.detector.face_landmark import FaceLandmark
+from lib.face_detector.face_landmark import FaceLandmark
 
 class FacePose:
     def __init__(self, size = None):

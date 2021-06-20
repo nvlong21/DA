@@ -105,15 +105,15 @@ class Tracker(object):
                         lm68_list.append(lm68)
                         lst_head_pose.append(pose)
                     lst_boxes.append(boxes[i])
-                    warped_face, face_img_tranform = warp_and_crop_face(img, landmark, self.refrence, crop_size=(112,112))
-                    faces.append(warped_face)
-                    faces_2_tensor.append(torch.FloatTensor(face_img_tranform).contiguous().unsqueeze(0).to(self.device))
+                    # warped_face, face_img_tranform = warp_and_crop_face(img, landmark, self.refrence, crop_size=(112,112))
+                    # faces.append(warped_face)
+                    # faces_2_tensor.append(torch.FloatTensor(face_img_tranform).contiguous().unsqueeze(0).to(self.device))
 
         num_face = len(lst_boxes)
         dict_result["num_face"] = num_face
         dict_result["bboxs"] = boxes
-        dict_result["faces"] = faces
-        dict_result["faces_tensor"] = faces_2_tensor
+        # dict_result["faces"] = faces
+        # dict_result["faces_tensor"] = faces_2_tensor
         dict_result["poses"] = lst_head_pose
-        dict_result["lms_68"] = lm68_list
+        # dict_result["lms_68"] = lm68_list
         return dict_result
