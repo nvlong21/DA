@@ -2,13 +2,14 @@ import numpy as np
 from sklearn.utils.linear_assignment_ import linear_assignment
 import copy
 from sklearn.metrics.pairwise import cosine_similarity as cosine
-
+import uuid
 class Tracker(object):
   def __init__(self, opt):
     self.opt = opt
     self.reset()
     self.nID = 10000
     self.alpha = 0.1
+    self.name = "cam"
 
   def init_track(self, results):
     for item in results:
@@ -36,7 +37,7 @@ class Tracker(object):
     self.tracklet_ages = np.zeros((self.nID), dtype=np.int)
     self.alive = []
 
-  def step(self, results, public_det=None):
+  def step(self, results, public_det=None, list_track = {}):
     N = len(results)
     M = len(self.tracks)
     self.alive = []
@@ -77,8 +78,10 @@ class Tracker(object):
       matched_indices = linear_assignment(dist)
     else:
       matched_indices = greedy_assignment(copy.deepcopy(dist))
+
     unmatched_dets = [d for d in range(dets.shape[0]) \
       if not (d in matched_indices[:, 0])]
+
     unmatched_tracks = [d for d in range(tracks.shape[0]) \
       if not (d in matched_indices[:, 1])]
     
@@ -98,9 +101,12 @@ class Tracker(object):
     for m in matches:
       track = results[m[0]]
       track['tracking_id'] = self.tracks[m[1]]['tracking_id']
+      
       track['age'] = 1
       track['active'] = self.tracks[m[1]]['active'] + 1
+      
       if 'embedding' in track:
+        track['tracking_id_str'] = self.tracks[m[1]]['tracking_id_str']
         self.alive.append(track['tracking_id'])
         self.embedding_bank[self.tracks[m[1]]['tracking_id']-1, :] = self.alpha * track['embedding'] \
                                                                      + (1-self.alpha) * self.embedding_bank[self.tracks[m[1]]['tracking_id']-1, :]
@@ -137,15 +143,44 @@ class Tracker(object):
               track['tracking_id'] = max_id
               track['age'] = 1
               track['active'] = 1
+              track['tracking_id_str'] = self.tracks[max_id - 1]['tracking_id_str']
+              # track["name"] = 
               self.embedding_bank[track['tracking_id'] - 1, :] = self.alpha * track['embedding'] \
                                                                  + (1 - self.alpha) * self.embedding_bank[track['tracking_id'] - 1, :]
             else:
-              self.id_count += 1
-              track['tracking_id'] = self.id_count
-              track['age'] = 1
-              track['active'] = 1
-              self.embedding_bank[self.id_count - 1, :] = track['embedding']
-              self.cat_bank[self.id_count - 1] = track['class']
+              in_tracker = False
+              if len(list(list_track.keys()))>0:
+                list_cam_name = []
+                list_cam_max_id = [] 
+                list_cam_max_cos = []
+
+                for cam_name in list_track.keys():
+                  cam_max_id, cam_max_cos = list_track[cam_name].get_similarity(track['embedding'], False, track['class'])
+                  list_cam_name.append(cam_name)
+                  list_cam_max_id.append(cam_max_id)
+                  list_cam_max_cos.append(cam_max_cos)
+                max_cos_multi_cam_idx = np.argmax(np.array(list_cam_max_cos))
+                max_cos_multi_cam = list_cam_max_id[max_cos_multi_cam_idx]
+                max_id_multi_cam = list_cam_max_id[max_cos_multi_cam_idx]
+                max_name_multi_cam = list_cam_name[max_cos_multi_cam_idx]
+
+                if max_cos_multi_cam >= 0.3 and list_track[max_name_multi_cam].tracklet_ages[max_cos_multi_cam_idx - 1] < self.opt.window_size:
+                  track['tracking_id'] = max(max_id_multi_cam, self.id_count+1) #max_id
+                  track['age'] = 1
+                  track['active'] = 1
+                  track["tracking_id_str"] = list_track[max_name_multi_cam].tracks[max_id_multi_cam - 1]['tracking_id_str']
+                  self.embedding_bank[track['tracking_id'] - 1, :] = self.alpha * track['embedding'] \
+                                                                    + (1 - self.alpha) * list_track[max_name_multi_cam].embedding_bank[max_id_multi_cam - 1, :]
+                  in_tracker = True
+              if not in_tracker:
+                self.id_count += 1
+                track['tracking_id'] = self.id_count
+                track["tracking_id_str"] = uuid.uuid4()
+                track['age'] = 1
+                track['active'] = 1
+                self.embedding_bank[self.id_count - 1, :] = track['embedding']
+                self.cat_bank[self.id_count - 1] = track['class']
+
             self.alive.append(track['tracking_id'])
             ret.append(track)
           else:
