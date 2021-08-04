@@ -6,9 +6,9 @@ from torch.autograd import Variable
 # from mxnet import gluon
 import numpy as np
 
-class RetinaFace_MobileNet(nn.Module):
+class centerFace_MobileNet(nn.Module):
     def __init__(self):
-        super(RetinaFace_MobileNet, self).__init__()
+        super(centerFace_MobileNet, self).__init__()
             
         self.mobilenet0_conv0 = nn.Sequential(
                     nn.Conv2d(in_channels=3, out_channels=8, kernel_size=3, stride=2, padding=1, bias=False),
@@ -388,8 +388,8 @@ class RetinaFace_MobileNet(nn.Module):
         detections.append(landmark8)
         return detections
 
-def load_retinaface_mbnet(path = ''):
-    net = RetinaFace_MobileNet()
+def load_centerface_mbnet(path = ''):
+    net = centerFace_MobileNet()
     ctx = mx.cpu()
     sym, arg_params, aux_params = mx.model.load_checkpoint(path, 0)
     args = arg_params.keys()

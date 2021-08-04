@@ -6,7 +6,7 @@ from .deepsocial import birds_eye, birds_eye2, Euclidean_distance, Euclidean_dis
 from .utils import get_four_points, get_two_points
 from lib.face_detector.Tracker import Tracker
 from lib.face_detector.config import detector_config
-from lib.model.mobilenetv3 import mobilenetv3
+from lib.model.mobilenetv2 import mobilenetv2
 from PIL import Image
 from torchvision import transforms
 from shapely import geometry
@@ -56,12 +56,14 @@ class Socal_Distance(object):
     return self._is_init
   
   def _init_face_detect(self):
-    _config = detector_config()
+    _config = detector_config(device = "cuda:0")
     self.detector = Tracker(_config)
+
   def _init_facemask(self):
     checkpoint = torch.load('checkpoint/mask_detection.pth.tar')
-    self.model_facemask = mobilenetv3().cuda()
+    self.model_facemask = mobilenetv2()
     self.model_facemask.load_state_dict(checkpoint['state_dict'])
+    self.model_facemask.cuda()
     self.model_facemask.eval()
 
 
@@ -74,7 +76,7 @@ class Socal_Distance(object):
     return results
   
 
-  def init_transform_matrix(self, frame):
+  def init_transform_matrix(self, frame, ratio_hw):
     height, width, _ = frame.shape
     pts_src = get_four_points(frame) #polygon detect and view 
     pts_dis = get_two_points(frame) #get distance 2M
@@ -89,9 +91,8 @@ class Socal_Distance(object):
     #     img_path = cfg["image_parameters"]["img_path"]
     #     # size_frame = cfg["image_parameters"]["size_frame"]
     b_height = height
-    b_width = int(0.65*height)
+    b_width = int(ratio_hw*height)
     self.b_height = b_height
-
     self.b_width = b_width
     self.e = birds_eye2(self.calibration, b_width, b_height, frame)
     # self.calibration      = [[180,162],[618,0],[552,540],[682,464]]
@@ -107,7 +108,6 @@ class Socal_Distance(object):
     self.MembershipTimeForCouples    = 35        # Time for considering as a couple (per Frame)
     self._trackMap = np.zeros((b_height, b_width, 3), dtype=np.uint8)
     self._crowdMap = np.zeros((b_height, b_width), dtype=np.int) 
-    
     # self.e = birds_eye(frame, self.calibration)
     self._is_init = True
     
@@ -149,6 +149,7 @@ class Socal_Distance(object):
     softmax_output = torch.softmax(output, dim=-1)
 
     mask_prob = softmax_output[0][1]
+    
     nomask_porb = softmax_output[0][0]
     return mask_prob, nomask_porb
 
@@ -329,7 +330,7 @@ class Socal_Distance(object):
     e.setImage(img)
     im_h, im_w = img.shape[:2]
     overlay = e.convrt2Bird(img)
-    cv2.imwrite("overlay.jpg", overlay)
+    # cv2.imwrite("overlay.jpg", overlay)
     for idx, box in centroid_dict.items():
       center_bird = (
       box[0], box[1])
@@ -351,7 +352,7 @@ class Socal_Distance(object):
 
     e.setBird(overlay)
     temp_img = e.convrt2Image(overlay, [im_w, im_h])
-    cv2.imwrite("temp_img.jpg", temp_img)
+    # cv2.imwrite("temp_img.jpg", temp_img)
     # cv2.fillConvexPoly(image, np.array(self.calibration).astype(int), 0, 16)
     e.setImage(cv2.addWeighted(e.original, Transparency, temp_img, 1 - Transparency, 0))
     overlay = e.image
@@ -421,34 +422,38 @@ class Socal_Distance(object):
     return (redZone, greenZone)
   def step(self, image, bboxes, ids):
     results_face = []
-    # cv2.imwrite("as.jpg", image)
     imh, imw  = image.shape[:2]
-    # for (b, id) in zip(bboxes, ids):
-    #   if id not in self.mask_track.keys():
-    #     xmin, ymin, xmax, ymax = int(b[0]), int(b[1]), int(b[2]), int(b[3])
-    #     if not ((xmin>=0 and xmin<imw) and (ymin>=0 and ymin<imh)
-    #         and (xmax>=0 and xmax<imw) and (ymax>=0 and ymax<imw)):
-    #       continue
-    #     person_img = image[ymin:ymax, xmin:xmax]
-    #     result = self.face_detect(person_img.copy())
-    #     if result["num_face"]>0:
-    #       if abs(result["poses"][0]["yaw"])<45:
-    #         mask_prob, nomask_porb = self.inference_facemask(person_img, result["bboxs"][0])
-    #         if mask_prob >= 0.8:
-    #           result["face_mask"] = "mask"
-    #           result["mask_prob"] = mask_prob
-    #         else:
-    #           result["face_mask"] = "unmask"
-    #       else:
-    #         result["face_mask"] = "nocheck"
+    for (b, id) in zip(bboxes, ids):
+      if id not in self.mask_track.keys():
+        xmin, ymin, xmax, ymax = int(b[0]), int(b[1]), int(b[2]), int(b[3])
+        if not ((xmin>=0 and xmin<imw) and (ymin>=0 and ymin<imh)
+            and (xmax>=0 and xmax<imw) and (ymax>=0 and ymax<imw)):
+          continue
+        person_img = image[ymin:ymax, xmin:xmax]
+        result = self.face_detect(person_img.copy())
+        if result["num_face"]>0:
+          if abs(result["poses"][0]["yaw"])<45 :
+            mask_prob, nomask_porb = self.inference_facemask(person_img, result["bboxs"][0])
+            
+            if mask_prob >= 0.85:
+              print(result["poses"][0])
+              print(mask_prob)
+              result["face_mask"] = "mask"
+              result["mask_prob"] = mask_prob
+            else:
+              result["face_mask"] = "unmask"
+          else:
+            result["face_mask"] = "nocheck"
         
-    #       self.mask_track.update({id: result})
-    #   else:
-    #     result = self.mask_track[id]
-    #   results_face.append((id, result))
-    # print(results_face)
-    cv2.polylines(image, [np.array(self.poly_bounds, np.int32)], True, (0, 255, 255), thickness=4)
+          self.mask_track.update({id: result})
+        else:
+          result["face_mask"] = "nocheck"
+      else:
+        result = self.mask_track[id]
+      results_face.append((id, result))
+
     
+    cv2.polylines(image, [np.array(self.poly_bounds, np.int32)], True, (0, 255, 255), thickness=4)
     centroid_dict, partImage = self.get_centroid(bboxes, ids, image)
     self._centroid_dict.update(centroid_dict)
     redZone, greenZone = self.find_zone(centroid_dict, criteria=self.ViolationDistForIndivisuals)
@@ -473,17 +478,18 @@ class Socal_Distance(object):
         self._trackMap = Apply_trackmap(centroid_dict, self._trackMap, self.colorPool, 3)
         
         temp_img = self.e.convrt2Image(self._trackMap, [imw, imh])
-        cv2.imwrite("temp_img1.jpg", image)
+        # cv2.imwrite("temp_img1.jpg", image)
         # Black out polygonal area in destination image.
         image_cp = cv2.fillConvexPoly(image.copy(), np.array(self.poly_bounds).astype(int), 0, 16)
         DTCShow = cv2.add(temp_img, image_cp) 
-        cv2.imwrite("temp_img2.jpg", image)
+        # cv2.imwrite("temp_img2.jpg", image)
         for id, box in centroid_dict.items():
             center_bird = box[0], box[1]
             if not id in coupleZone:
                 cv2.rectangle(DTCShow, (box[4], box[5]), (box[6], box[7]), (0,255,0), 2)
                 cv2.rectangle(DTCShow, (box[4], box[5]-13), (box[4]+len(str(id))*10, box[5]), (0,200,255),-1)
                 cv2.putText(DTCShow, str(id), (box[4]+2, box[5]-2), cv2.FONT_HERSHEY_SIMPLEX, .4, (0,0,0), 1, cv2.LINE_AA)
+                
         for coupled in couples:
             p1 , p2 = coupled
             couplesID = couples[coupled]['id']
@@ -501,21 +507,18 @@ class Socal_Distance(object):
             cv2.putText(DTCShow, str(couplesID), (textLoc), cv2.FONT_HERSHEY_SIMPLEX, .4, (0,0,0),1, cv2.LINE_AA)
        
     if self.SocialDistance:
-        cv2.imwrite("im.jpg", image)
+        # cv2.imwrite("im.jpg", image)
         SDimage, birdSDimage = self.apply_ellipticbound(image.copy(), centroid_dict, redZone, greenZone, yellowZone, final_redZone, coupleZone, couples, self.CircleradiusForIndivsual, self.CircleradiusForCouples)
-    return SDimage, birdSDimage, DTCShow
+    return SDimage, birdSDimage, DTCShow, results_face
 
     
-
- 
-
-def greedy_assignment(dist):
-  matched_indices = []
-  if dist.shape[1] == 0:
-    return np.array(matched_indices, np.int32).reshape(-1, 2)
-  for i in range(dist.shape[0]):
-    j = dist[i].argmin()
-    if dist[i][j] < 1e16:
-      dist[:, j] = 1e18
-      matched_indices.append([i, j])
-  return np.array(matched_indices, np.int32).reshape(-1, 2)
+# def greedy_assignment(dist):
+#   matched_indices = []
+#   if dist.shape[1] == 0:
+#     return np.array(matched_indices, np.int32).reshape(-1, 2)
+#   for i in range(dist.shape[0]):
+#     j = dist[i].argmin()
+#     if dist[i][j] < 1e16:
+#       dist[:, j] = 1e18
+#       matched_indices.append([i, j])
+#   return np.array(matched_indices, np.int32).reshape(-1, 2)

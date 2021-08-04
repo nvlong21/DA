@@ -136,7 +136,7 @@ def nms(dets, thresh):
 
     return keep
 
-class RetinaFace_Utils:
+class centerFace_Utils:
     def __init__(self, nms_threshold):
         self.nms_threshold = nms_threshold
         self.vote = False

@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 import numpy as np
 
-__all__ = ['MobileNetV3', 'mobilenetv3']
+__all__ = ['MobileNetV2', 'mobilenetv2']
 
 
 def conv_bn(inp, oup, stride, conv_layer=nn.Conv2d, norm_layer=nn.BatchNorm2d, nlin_layer=nn.ReLU):
@@ -115,9 +115,9 @@ class MobileBottleneck(nn.Module):
             return self.conv(x)
 
 
-class MobileNetV3(nn.Module):
+class MobileNetV2(nn.Module):
     def __init__(self, n_class=2, input_size=96, dropout=0.8, mode='small', width_mult=1.0):
-        super(MobileNetV3, self).__init__()
+        super(MobileNetV2, self).__init__()
         input_channel = 16
         last_channel = 10 #1280
         if mode == 'large':
@@ -222,15 +222,15 @@ class MobileNetV3(nn.Module):
                     nn.init.zeros_(m.bias)
 
 
-def mobilenetv3():
-    model = MobileNetV3(n_class=2, input_size=96, mode='small', width_mult=1.0)
+def mobilenetv2():
+    model = MobileNetV2(n_class=2, input_size=96, mode='small', width_mult=1.0)
     return model
 
 """
 if __name__ == '__main__':
     from thop import profile
-    net = mobilenetv3()
-    print('mobilenetv3:\n', net)
+    net = mobilenetv2()
+    print('mobilenetv2:\n', net)
     print('Total params: %.2fM' % (sum(p.numel() for p in net.parameters())/1000000.0))
 
     inputs = torch.randn(1, 3, 96, 96)

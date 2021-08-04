@@ -1,8 +1,8 @@
 import os
 import cv2
-from detector import Retinaface_Detector
+from detector import centerface_Detector
 import time
-detector = Retinaface_Detector()
+detector = centerface_Detector()
 test_images = os.listdir('./test_images')
 
 for image in test_images:

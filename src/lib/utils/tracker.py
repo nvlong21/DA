@@ -143,7 +143,7 @@ class Tracker(object):
               track['tracking_id'] = max_id
               track['age'] = 1
               track['active'] = 1
-              track['tracking_id_str'] = self.tracks[max_id - 1]['tracking_id_str']
+              track['tracking_id_str'] = uuid.uuid4() #self.tracks[max_id - 1]['tracking_id_str']
               # track["name"] = 
               self.embedding_bank[track['tracking_id'] - 1, :] = self.alpha * track['embedding'] \
                                                                  + (1 - self.alpha) * self.embedding_bank[track['tracking_id'] - 1, :]

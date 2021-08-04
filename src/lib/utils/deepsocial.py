@@ -1,9 +1,3 @@
-# uncompyle6 version 3.5.0
-# Python bytecode 3.7 (3394)
-# Decompiled from: Python 2.7.5 (default, Aug  7 2019, 00:51:29) 
-# [GCC 4.8.5 20150623 (Red Hat 4.8.5-39)]
-# Embedded file name: deepsocial.py
-# Size of source mod 2**32: 14036 bytes
 import cv2, numpy as np
 from itertools import combinations
 

@@ -153,6 +153,15 @@ class Debugger(object):
                       (bbox[0] + cat_size[0], bbox[1]), c, -1)
         cv2.putText(self.imgs[img_id], txt, (bbox[0], bbox[1] - thickness - 1), 
                     font, fontsize, (0, 0, 0), thickness=1, lineType=cv2.LINE_AA)
+  def add_meta(self, dict_temp, img_id):
+    start_y = 20
+    thickness = 2
+    fontsize = 0.8 if self.opt.qualitative else 0.5
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    for k in dict_temp.keys():
+      cv2.putText(self.imgs[img_id], "{}: {}".format(str(k), str(dict_temp[k])), (10, start_y - thickness - 1), 
+                    font, fontsize, (0, 0, 0), thickness=1, lineType=cv2.LINE_AA)
+      start_y+=25
 
   def add_coco_seg(self, seg, tracking_id, img_id='default',conf=1):
       if self.opt.show_track_color:

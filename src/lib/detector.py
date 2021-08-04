@@ -76,9 +76,10 @@ class Detector(object):
       image = image_or_path_or_tensor['image'][0].numpy()
       pre_processed_images = image_or_path_or_tensor
       pre_processed = True
+      
     image_socal_dis = image.copy()
     if not self.socal_distance.is_init():
-      self.socal_distance.init_transform_matrix(image_socal_dis)
+      self.socal_distance.init_transform_matrix(image_socal_dis, self.opt.ratio_hw)
     loaded_time = time.time()
     load_time += (loaded_time - start_time)
     
@@ -166,16 +167,28 @@ class Detector(object):
             dis_bboxes.append(item['bbox'])
             dis_ids.append(item['tracking_id'])
       
-      SDimage, birdSDimage, DTCShow = self.socal_distance.step(image_socal_dis, dis_bboxes, dis_ids)
-      cv2.imwrite("a.jpg", SDimage)
+      SDimage, birdSDimage, DTCShow, facemask_result = self.socal_distance.step(image_socal_dis, dis_bboxes, dis_ids)
+      # cv2.imwrite("a.jpg", SDimage)
       image = SDimage.copy()
     tracking_time = time.time()
     track_time += tracking_time - end_time
     tot_time += tracking_time - start_time
     our_time += tracking_time - pre_process_time
-
+    no_check_count = 0
+    no_mask_count = 0
+    mask_count = 0
+    for (id, re) in facemask_result:
+      if re.get("face_mask") == "unmask":
+        no_mask_count += 1
+      elif re.get("face_mask") == "nocheck":
+        no_check_count += 1
+      else:
+        mask_count += 1
+    face_mask_result = {"no_mask_count": no_mask_count, "no_check_count": no_check_count,
+            "mask_count": mask_count}
+    # results.update(face_mask_result)
     if self.opt.debug >= 1:
-      self.show_results(self.debugger, image, results)
+      self.show_results(self.debugger, image, results, face_mask_result)
 
     self.cnt += 1
 
@@ -440,13 +453,13 @@ class Detector(object):
         debugger.add_blend_img(pre_img, pre_hm, 'pre_hm')
 
 
-  def show_results(self, debugger, image, results):
+  def show_results(self, debugger, image, results, dict_temp = {}):
     debugger.add_img(image, img_id='generic')
     if self.opt.tracking:
       debugger.add_img(self.pre_image_ori if self.pre_image_ori is not None else image, 
         img_id='previous')
       self.pre_image_ori = image
-
+    
     for j in range(len(results)):
       if results[j]['score'] > self.opt.vis_thresh:
         item = results[j]
@@ -472,7 +485,8 @@ class Detector(object):
         if (item['class'] in [1, 2]) and 'hps' in item:
           debugger.add_coco_hp(item['hps'], tracking_id=tracking_id,
             img_id='generic')
-
+    if len(dict_temp.keys())>0:
+      debugger.add_meta(dict_temp, img_id='generic')
     if len(results) > 0 and \
       'dep' in results[0] and 'alpha' in results[0] and 'dim' in results[0]:
       debugger.add_3d_detection(

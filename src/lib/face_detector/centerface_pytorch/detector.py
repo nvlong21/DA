@@ -3,17 +3,17 @@ import numpy as np
 import cv2
 import torch
 from torch.autograd import Variable
-from retinaface import load_retinaface_mbnet
-from utils import RetinaFace_Utils
+from centerface import load_centerface_mbnet
+from utils import centerFace_Utils
 
-class Retinaface_Detector(object):
+class centerface_Detector(object):
     def __init__(self):
         self.threshold = 0.6
-        self.model = load_retinaface_mbnet()
+        self.model = load_centerface_mbnet()
         self.pixel_means = np.array([0.0, 0.0, 0.0], dtype=np.float32)
         self.pixel_stds = np.array([1.0, 1.0, 1.0], dtype=np.float32)
         self.pixel_scale = float(1.0)
-        self.utils = RetinaFace_Utils()
+        self.utils = centerFace_Utils()
 
     def img_process(self, img):
         target_size = 320

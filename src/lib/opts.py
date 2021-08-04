@@ -110,7 +110,8 @@ class opts(object):
     self.parser.add_argument('--deform_kernel_size', type=int, default=3)
     self.parser.add_argument('--trades', action='store_true', help='Track to Detect and Segment:'
                                                                    'An Online Multi Object Tracker')
-
+    #social distance
+    self.parser.add_argument('--ratio_hw',  type=float, default=0.5)
     # input
     self.parser.add_argument('--input_res', type=int, default=-1, 
                              help='input height and width. -1 for default from '

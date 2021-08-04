@@ -7,9 +7,9 @@ import gc
 from torch.autograd import Variable
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from PIL import Image
-from retinaface_pytorch.retinaface import load_retinaface_mbnet, RetinaFace_MobileNet
-from retinaface_pytorch.utils import RetinaFace_Utils
-from retinaface_pytorch.align_trans import get_reference_facial_points, warp_and_crop_face
+from centerface_pytorch.centerface import load_centerface_mbnet, centerFace_MobileNet
+from centerface_pytorch.utils import centerFace_Utils
+from centerface_pytorch.align_trans import get_reference_facial_points, warp_and_crop_face
 import time
 from head_pose import PoseEstimator
 # from torchvision import transforms as trans
@@ -35,7 +35,7 @@ def img_process_tensorrt(img, target_size, max_size):
     im_scale[1] = target_size / im_shape[0]
     return im_tensor, im_scale
 
-class Retinaface_Detector(object):
+class centerface_Detector(object):
     def __init__(self, conf):
         self.im_scale = None
         self.sort = True
@@ -52,14 +52,14 @@ class Retinaface_Detector(object):
         self.threshold = conf.threshold
         self.device = conf.device
         self.refrence = get_reference_facial_points(default_square = True)
-        self.utils = RetinaFace_Utils(conf.nms_thresholds)
+        self.utils = centerFace_Utils(conf.nms_thresholds)
         
 
 # self.head_pose_predict = 
     def _detector_init(self, conf):
-        self.model = RetinaFace_MobileNet()
+        self.model = centerFace_MobileNet()
         self.model = self.model.to(self.device)
-        checkpoint = torch.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'retinaface_pytorch/checkpoint.pth'))
+        checkpoint = torch.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'centerface_pytorch/checkpoint.pth'))
         self.model.load_state_dict(checkpoint['state_dict'])
         self.model.eval()
         del checkpoint

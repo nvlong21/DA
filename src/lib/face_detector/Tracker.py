@@ -5,9 +5,9 @@ import cv2
 import torch
 from torch.autograd import Variable
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from retinaface_pytorch.retinaface import RetinaFace_MobileNet
-from retinaface_pytorch.utils import RetinaFace_Utils
-from retinaface_pytorch.align_trans import get_reference_facial_points, warp_and_crop_face
+from centerface_pytorch.centerface import centerFace_MobileNet
+from centerface_pytorch.utils import centerFace_Utils
+from centerface_pytorch.align_trans import get_reference_facial_points, warp_and_crop_face
 # from trackingv2 import Sort
 # from head_pose import PoseEstimator
 from face_pose import FacePose
@@ -36,12 +36,12 @@ class Tracker(object):
         self.threshold = conf.threshold
         self.device = conf.device
         self.refrence = get_reference_facial_points(default_square = True)
-        self.utils = RetinaFace_Utils(conf.nms_thresholds)
+        self.utils = centerFace_Utils(conf.nms_thresholds)
 
     def _detector_init_(self, conf):
-        self.model = RetinaFace_MobileNet()
+        self.model = centerFace_MobileNet()
         self.model = self.model.to(self.device)
-        checkpoint = torch.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'retinaface_pytorch/checkpoint.pth'))
+        checkpoint = torch.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'centerface_pytorch/checkpoint.pth'))
         self.model.load_state_dict(checkpoint['state_dict'])
         self.model.eval()
         del checkpoint
@@ -86,14 +86,13 @@ class Tracker(object):
         boxes, landmarks = self.utils.detect(im, output, self.threshold, im_scale)    
         if self.limit:
             boxes, landmarks = boxes[:self.limit], landmarks[:self.limit]
-        # self.tracker[cam_id].update()
+
         if self.sort:
             face_area = (boxes[:,2] - boxes[:,0])*(boxes[:,3]-boxes[:, 1])
             indexs = np.argsort(face_area)[::-1]
             boxes = boxes[indexs].astype(np.int)
             landmarks = landmarks[indexs]
-        # boxes, landmarks, ids = self.tracker[cam_id].predict(boxes, landmarks)
-        
+
         if len(boxes) > 0:
             for i, landmark in enumerate(landmarks):
                 f = True
@@ -112,8 +111,5 @@ class Tracker(object):
         num_face = len(lst_boxes)
         dict_result["num_face"] = num_face
         dict_result["bboxs"] = boxes
-        # dict_result["faces"] = faces
-        # dict_result["faces_tensor"] = faces_2_tensor
         dict_result["poses"] = lst_head_pose
-        # dict_result["lms_68"] = lm68_list
         return dict_result
